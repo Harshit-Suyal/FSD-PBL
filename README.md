@@ -4,7 +4,7 @@
 
 ---
 
-## 👥 Team Members (Semester 6)
+## Team Members (Semester 6)
 - Harshit Suyal
 - Manas Joshi
 - Aishwary Bisht
@@ -12,20 +12,20 @@
 
 ---
 
-## 📚 Overview
+##  Overview
 
 This project, developed as part of our sixth-semester curriculum, aims to build a collaborative gig platform that bridges clients and freelancers for project-based work. As of Phase 2, the core user functionality is in place with fundamental workflows underway. Our broader goal is to provide a responsive, efficient, and secure experience for both clients and gig workers, drawing on real-world marketplace needs.
 
 ---
 
-## 🌟 Current Status
+##  Current Status
 
 - **Overall progress:** ~60%. This README covers completed features; several modules, including advanced workflows and real-time features, are scheduled for Phase 3.
 - **Platform:** The project is split into backend and frontend modules (`gig-platform-backend/` and `gig-platform-frontend/`).
 
 ---
 
-## 🚀 Core Functionality (Phase 2)
+##  Core Functionality (Phase 2)
 
 ### Main Features Delivered
 - **User Registration & Login:** Secure signup and login for both clients and freelancers.
@@ -79,7 +79,7 @@ npm start
 
 ---
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 FSD-PBL/
@@ -98,7 +98,7 @@ FSD-PBL/
 
 ---
 
-## 🧩 Environment Setup
+##  Environment Setup
 
 - **Node.js >= v14**
 - **npm >= v6**
@@ -116,7 +116,7 @@ Frontend config:
 
 ---
 
-## ⚠️ Edge Cases Handled (Phase 2)
+## Edge Cases Handled (Phase 2)
 
 - **Unique Account Enforcement:** Duplicate registrations by email blocked.
 - **Data Validation:** Forms validate required fields and basic input types.
@@ -126,7 +126,7 @@ Frontend config:
 
 ---
 
-## 🚩 Known Limitations / Next Challenges
+## Known Limitations / Next Challenges
 
 - **No integrated payments yet:** All transaction logic is mocked, not real.
 - **No real-time communication:** Chat & notifications coming in next phase.
