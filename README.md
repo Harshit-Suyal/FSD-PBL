@@ -1,6 +1,6 @@
 # FSD-PBL: Gig Platform – Semester 6 PBL Project
 
-**Phase 2 Completion: 60% | Academic Project**
+**Phase 2 Completion: 80% | Academic Project**
 
 ---
 
