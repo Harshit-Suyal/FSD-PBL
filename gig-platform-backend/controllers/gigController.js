@@ -121,8 +121,7 @@ export const createGig = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
-
-// @desc    Get all open gigs (with optional filters)
+// @desc    Get all available gigs (with optional filters)
 // @route   GET /api/gigs
 // @access  Public
 export const getGigs = async (req, res) => {
@@ -134,7 +133,7 @@ export const getGigs = async (req, res) => {
     if (category) filter.category = category;
     if (subcategory) filter.subcategory = subcategory;
     if (status) filter.status = status;
-    else filter.status = "open"; // default to open gigs
+    else filter.status = { $in: ["open", "pending"] }; // default to gigs still accepting applications
 
     if (status === "all") {
       delete filter.status;
@@ -154,7 +153,7 @@ export const getGigs = async (req, res) => {
     }
 
     const gigs = await Gig.find(filter)
-      .populate("client", "name email")
+      .populate("client", "name email phone")
       .populate("assignedWorkers", "name email")
       .sort({ createdAt: -1 });
 
@@ -172,7 +171,7 @@ export const getGigs = async (req, res) => {
 export const getGigById = async (req, res) => {
   try {
     const gig = await Gig.findById(req.params.id)
-      .populate("client", "name email")
+      .populate("client", "name email phone")
       .populate("worker", "name email")
       .populate("assignedWorkers", "name email");
 
@@ -345,11 +344,11 @@ export const getMyGigs = async (req, res) => {
       gigs = await Gig.find({ client: req.user.id })
         .populate("worker", "name email")
         .populate("assignedWorkers", "name email")
-        .sort({ createdAt: -1 });
+        .sort({ updatedAt: -1, createdAt: -1 });
     } else {
       gigs = await Gig.find({ assignedWorkers: req.user.id })
         .populate("client", "name email")
-        .sort({ createdAt: -1 });
+        .sort({ updatedAt: -1, createdAt: -1 });
     }
 
     const normalized = gigs.map((gig) => normalizeGigForRead(gig));
@@ -426,6 +425,13 @@ export const completeGig = async (req, res) => {
     }
 
     gig.status = "completed";
+    if (!gig.workEndedAt) {
+      gig.workEndedAt = new Date();
+    }
+    if (gig.workStartedAt && gig.workEndedAt) {
+      const elapsedHours = (gig.workEndedAt.getTime() - gig.workStartedAt.getTime()) / (1000 * 60 * 60);
+      gig.totalWorkHours = Math.max(0, Number(elapsedHours.toFixed(2)));
+    }
     await gig.save();
 
     const updated = await Gig.findById(gig._id)
@@ -463,9 +469,6 @@ export const generateGigInvoice = async (req, res) => {
     }
 
     const payment = await Payment.findOne({ gig: gig._id });
-    if (!payment) {
-      return res.status(400).json({ message: "Missing transaction data for invoice" });
-    }
 
     const primaryWorker = gig.assignedWorkers[0] || gig.worker;
     const invoice = {
@@ -476,12 +479,99 @@ export const generateGigInvoice = async (req, res) => {
       jobTitle: gig.title,
       amountINR: gig.budget,
       amountFormatted: `₹${Number(gig.budget).toLocaleString("en-IN")}`,
-      paymentDate: payment.paidAt,
+      paymentDate: payment?.paidAt || null,
+      paymentStatus: gig.paymentStatus,
       completionDate: gig.updatedAt,
+      workStartedAt: gig.workStartedAt,
+      workEndedAt: gig.workEndedAt,
+      totalWorkHours: gig.totalWorkHours || 0,
     };
 
     res.setHeader("Content-Disposition", `attachment; filename=invoice-${gig._id}.json`);
     res.json(invoice);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+export const startGigWork = async (req, res) => {
+  try {
+    const gig = await Gig.findById(req.params.id)
+      .populate("client", "name email")
+      .populate("worker", "name email")
+      .populate("assignedWorkers", "name email");
+
+    if (!gig) {
+      return res.status(404).json({ message: "Gig not found" });
+    }
+
+    const isAssignedWorker = gig.assignedWorkers.some((worker) => worker._id.toString() === req.user.id);
+    if (!isAssignedWorker) {
+      return res.status(403).json({ message: "Only assigned worker can start this job" });
+    }
+
+    if (!["accepted", "in-progress"].includes(gig.status)) {
+      return res.status(400).json({ message: "Job must be accepted before starting work" });
+    }
+
+    if (gig.workStartedAt) {
+      return res.status(400).json({ message: "Work already started for this job" });
+    }
+
+    gig.workStartedAt = new Date();
+    gig.workEndedAt = null;
+    if (gig.status === "accepted") {
+      gig.status = "in-progress";
+    }
+    await gig.save();
+
+    const updated = await Gig.findById(gig._id)
+      .populate("client", "name email")
+      .populate("worker", "name email")
+      .populate("assignedWorkers", "name email");
+
+    res.json(normalizeGigForRead(updated));
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+export const stopGigWork = async (req, res) => {
+  try {
+    const gig = await Gig.findById(req.params.id)
+      .populate("client", "name email")
+      .populate("worker", "name email")
+      .populate("assignedWorkers", "name email");
+
+    if (!gig) {
+      return res.status(404).json({ message: "Gig not found" });
+    }
+
+    const isAssignedWorker = gig.assignedWorkers.some((worker) => worker._id.toString() === req.user.id);
+    if (!isAssignedWorker) {
+      return res.status(403).json({ message: "Only assigned worker can stop this job" });
+    }
+
+    if (gig.status !== "in-progress") {
+      return res.status(400).json({ message: "Job must be in progress before stopping work" });
+    }
+
+    if (!gig.workStartedAt) {
+      return res.status(400).json({ message: "Work start time is missing. Start work first." });
+    }
+
+    gig.workEndedAt = new Date();
+    const elapsedHours = (gig.workEndedAt.getTime() - new Date(gig.workStartedAt).getTime()) / (1000 * 60 * 60);
+    gig.totalWorkHours = Math.max(0, Number(elapsedHours.toFixed(2)));
+    gig.status = "completed";
+    await gig.save();
+
+    const updated = await Gig.findById(gig._id)
+      .populate("client", "name email")
+      .populate("worker", "name email")
+      .populate("assignedWorkers", "name email");
+
+    res.json(normalizeGigForRead(updated));
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

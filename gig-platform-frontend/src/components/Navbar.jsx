@@ -18,7 +18,7 @@ const Navbar = () => {
         <nav className="navbar">
             <div className="navbar-inner">
                 <Link to="/" className="nav-logo">
-                    <div className="nav-logo-icon">⚡</div>
+                    <div className="nav-logo-icon">G</div>
                     GigConnect
                 </Link>
 
@@ -26,17 +26,14 @@ const Navbar = () => {
                     <NavLink to="/" end className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
                         Home
                     </NavLink>
-                    <NavLink to="/gigs" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
-                        Browse Gigs
-                    </NavLink>
-                    {isAuthenticated && (
-                        <NavLink to="/dashboard" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
-                            Dashboard
+                    {user?.role !== 'admin' && (
+                        <NavLink to="/gigs" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
+                            Browse Gigs
                         </NavLink>
                     )}
-                    {user?.role === 'admin' && (
-                        <NavLink to="/admin" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
-                            Admin
+                    {isAuthenticated && (
+                        <NavLink to={user?.role === 'admin' ? '/admin' : '/dashboard'} className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
+                            Dashboard
                         </NavLink>
                     )}
                 </div>

@@ -24,10 +24,6 @@ const userSchema = new mongoose.Schema(
             enum: ["worker", "client", "admin"],
             default: "worker",
         },
-        bio: {
-            type: String,
-            default: "",
-        },
         skills: {
             type: [String],
             default: [],
@@ -41,14 +37,17 @@ const userSchema = new mongoose.Schema(
             default: "",
             trim: true,
         },
+        gender: {
+            type: String,
+            enum: ["male", "female", ""],
+            default: "",
+            lowercase: true,
+            trim: true,
+        },
         workType: {
             type: String,
             enum: WORK_TYPES,
             default: "Freelancer",
-        },
-        avatar: {
-            type: String,
-            default: "",
         },
         isActive: {
             type: Boolean,

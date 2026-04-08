@@ -5,25 +5,32 @@ import { useToast } from '../context/ToastContext';
 import {
     getGigById,
     applyForGig,
+    getMyProfile,
+    updateProfile,
+    getMyApplications,
     getGigApplications,
     updateAppStatus,
     addReview,
     getGigReviews,
     deleteGig,
+    adminDeleteGig,
     updateGig,
     markGigPaymentDone,
     completeGig,
+    startGigWork,
+    stopGigWork,
     getGigInvoice,
     getGigMessages,
     sendGigMessage,
+    createReport,
 } from '../services/api';
 import Modal from '../components/Modal';
 import StarRating from '../components/StarRating';
-import { CATEGORY_ICONS, CATEGORY_LIST, JOB_CATEGORIES } from '../constants/gigMeta';
+import { CATEGORY_ICONS, CATEGORY_LIST, JOB_CATEGORIES, WORK_TYPES } from '../constants/gigMeta';
 
 const GigDetail = () => {
     const { id } = useParams();
-    const { user, isAuthenticated, token } = useAuth();
+    const { user, isAuthenticated, token, updateUser } = useAuth();
     const { success, error: toastError, info } = useToast();
     const navigate = useNavigate();
 
@@ -34,7 +41,11 @@ const GigDetail = () => {
     const [applyModal, setApplyModal] = useState(false);
     const [reviewModal, setReviewModal] = useState(false);
     const [editModal, setEditModal] = useState(false);
-    const [proposal, setProposal] = useState('');
+    const [workerExperience, setWorkerExperience] = useState('');
+    const [workerSkills, setWorkerSkills] = useState('');
+    const [workerPhone, setWorkerPhone] = useState('');
+    const [workerAddress, setWorkerAddress] = useState('');
+    const [workerWorkType, setWorkerWorkType] = useState(WORK_TYPES[0]);
     const [proposedPrice, setProposedPrice] = useState('');
     const [reviewRating, setReviewRating] = useState(5);
     const [reviewComment, setReviewComment] = useState('');
@@ -46,11 +57,40 @@ const GigDetail = () => {
     const [offerAmount, setOfferAmount] = useState('');
     const [chatLoading, setChatLoading] = useState(false);
     const [chatAllowed, setChatAllowed] = useState(false);
+    const [alreadyApplied, setAlreadyApplied] = useState(false);
 
     const isOwner = user && gig && gig.client?._id === user._id;
     const isWorker = user?.role === 'worker';
     const isClient = user?.role === 'client';
     const isAdmin = user?.role === 'admin';
+    const isAssignedWorker = isWorker && (
+        gig?.assignedWorkers?.some((w) => w?._id === user?._id) ||
+        gig?.worker?._id === user?._id
+    );
+
+    useEffect(() => {
+        const syncProfile = async () => {
+            if (!isAuthenticated) return;
+            try {
+                const { data } = await getMyProfile();
+                if (data) {
+                    updateUser(data);
+                }
+            } catch {
+            }
+        };
+
+        syncProfile();
+    }, [isAuthenticated]);
+
+    useEffect(() => {
+        if (!applyModal || !user) return;
+        setWorkerExperience(user.bio || '');
+        setWorkerSkills(Array.isArray(user.skills) ? user.skills.join(', ') : '');
+        setWorkerPhone(user.phone || '');
+        setWorkerAddress(user.location || '');
+        setWorkerWorkType(user.workType || WORK_TYPES[0]);
+    }, [applyModal, user]);
 
     useEffect(() => {
         const load = async () => {
@@ -73,9 +113,17 @@ const GigDetail = () => {
 
                 if (isAuthenticated) {
                     try {
+                        const workerApplyCheckPromise = user?.role === 'worker'
+                            ? getMyApplications().then((res) => {
+                                const hasApplied = (res.data || []).some((app) => app.gig?._id === id);
+                                setAlreadyApplied(hasApplied);
+                            }).catch(() => setAlreadyApplied(false))
+                            : Promise.resolve();
+
                         const [appRes, revRes] = await Promise.all([
                             canViewApplications ? getGigApplications(id).catch(() => ({ data: [] })) : Promise.resolve({ data: [] }),
                             getGigReviews(id),
+                            workerApplyCheckPromise,
                         ]);
                         setApplications(appRes.data);
                         setReviews(revRes.data);
@@ -117,8 +165,41 @@ const GigDetail = () => {
         loadMessages();
     }, [id, gig, isAuthenticated, isOwner, isAdmin, user?._id]);
 
+    useEffect(() => {
+        if (!gig || !user) return;
+        if (user.role === 'worker') {
+            setChatReceiver(gig.client?._id || '');
+        }
+    }, [gig?._id, gig?.client?._id, user?._id, user?.role]);
+
     const handleApply = async (e) => {
         e.preventDefault();
+        if (alreadyApplied) {
+            info('You have already applied for this job from this account.');
+            return;
+        }
+
+        const normalizedPrice = Number(proposedPrice);
+        if (!Number.isFinite(normalizedPrice) || normalizedPrice <= 0) {
+            toastError('Your price must be a positive number.');
+            return;
+        }
+
+        if (!/^\d{10,15}$/.test(String(workerPhone || '').trim())) {
+            toastError('Phone number must contain only digits (10 to 15).');
+            return;
+        }
+
+        if (!String(workerAddress || '').trim()) {
+            toastError('Address is required.');
+            return;
+        }
+
+        if (!WORK_TYPES.includes(workerWorkType)) {
+            toastError('Please select a valid work type.');
+            return;
+        }
+
         if (!token) {
             toastError('Your session is missing. Please login again.');
             navigate('/login');
@@ -126,12 +207,40 @@ const GigDetail = () => {
         }
         setSubmitting(true);
         try {
-            await applyForGig(id, { proposal, proposedPrice: Number(proposedPrice) });
+            const skillsArray = String(workerSkills || '')
+                .split(',')
+                .map((skill) => skill.trim())
+                .filter(Boolean);
+
+            const { data: updatedProfile } = await updateProfile({
+                bio: workerExperience,
+                skills: skillsArray,
+                phone: String(workerPhone).trim(),
+                location: String(workerAddress).trim(),
+                workType: workerWorkType,
+            });
+            updateUser(updatedProfile);
+
+            await applyForGig(id, {
+                workerExperience,
+                workerSkills,
+                proposedPrice: normalizedPrice,
+            });
             success('Application submitted successfully! 🎉');
             setApplyModal(false);
-            setProposal(''); setProposedPrice('');
+            setAlreadyApplied(true);
+            setWorkerExperience('');
+            setWorkerSkills('');
+            setWorkerPhone('');
+            setWorkerAddress('');
+            setWorkerWorkType(WORK_TYPES[0]);
+            setProposedPrice('');
         } catch (err) {
-            toastError(err.response?.data?.message || 'Failed to apply');
+            if (err.response?.status === 403 && err.response?.data?.message === 'Only workers can apply for gigs') {
+                toastError('Your current account role is not worker on server. Please login with a worker account.');
+            } else {
+                toastError(err.response?.data?.message || 'Failed to apply');
+            }
         } finally {
             setSubmitting(false);
         }
@@ -177,6 +286,27 @@ const GigDetail = () => {
             success('Job marked as completed. ✅');
         } catch (err) {
             toastError(err.response?.data?.message || 'Failed to complete job');
+        }
+    };
+
+    const handleStartWork = async () => {
+        try {
+            const { data } = await startGigWork(id);
+            setGig(data);
+            success('Work timer started. ⏱️');
+        } catch (err) {
+            toastError(err.response?.data?.message || 'Failed to start work');
+        }
+    };
+
+    const handleStopWork = async () => {
+        if (!window.confirm('Stop work and mark this job completed?')) return;
+        try {
+            const { data } = await stopGigWork(id);
+            setGig(data);
+            success('Work stopped and job marked completed. Invoice is ready. ✅');
+        } catch (err) {
+            toastError(err.response?.data?.message || 'Failed to stop work');
         }
     };
 
@@ -240,11 +370,38 @@ const GigDetail = () => {
     const handleDelete = async () => {
         if (!window.confirm('Are you sure you want to delete this job posting?')) return;
         try {
-            await deleteGig(id);
+            if (isAdmin) {
+                await adminDeleteGig(id);
+            } else {
+                await deleteGig(id);
+            }
             success('Job deleted.');
             navigate('/dashboard');
         } catch (err) {
             toastError(err.response?.data?.message || 'Failed to delete job');
+        }
+    };
+
+    const handleReportGig = async () => {
+        if (!isAuthenticated) {
+            navigate('/login');
+            return;
+        }
+
+        const reason = window.prompt('Report reason (required):');
+        if (!reason || !reason.trim()) return;
+        const description = window.prompt('Additional details (optional):') || '';
+
+        try {
+            await createReport({
+                targetType: 'gig',
+                targetId: gig._id,
+                reason: reason.trim(),
+                description,
+            });
+            success('Report submitted. Admin will review it.');
+        } catch (err) {
+            toastError(err.response?.data?.message || 'Failed to submit report.');
         }
     };
 
@@ -337,6 +494,9 @@ const GigDetail = () => {
                             <div>
                                 <p style={{ fontWeight: 700, fontSize: '1rem' }}>{gig.client?.name}</p>
                                 <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.1rem' }}>{gig.client?.email}</p>
+                                <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.1rem' }}>
+                                    {gig.client?.phone ? `📞 ${gig.client.phone}` : '📞 Phone not provided'}
+                                </p>
                             </div>
                         </div>
                     </div>
@@ -468,17 +628,26 @@ const GigDetail = () => {
                             <form onSubmit={handleSendMessage} style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
                                 <select value={chatReceiver} onChange={e => setChatReceiver(e.target.value)} required>
                                     <option value="">Select receiver</option>
-                                    {[
-                                        gig.client,
-                                        ...(gig.assignedWorkers || []),
-                                        ...applications.map(a => a.worker).filter(Boolean),
-                                    ]
-                                        .filter(Boolean)
-                                        .filter((u, idx, arr) => arr.findIndex(x => x._id === u._id) === idx)
-                                        .filter(u => u._id !== user?._id)
-                                        .map(u => (
+                                    {(() => {
+                                        const all = [
+                                            gig.client,
+                                            ...(gig.assignedWorkers || []),
+                                            ...applications.map(a => a.worker).filter(Boolean),
+                                        ]
+                                            .filter(Boolean)
+                                            .filter((u, idx, arr) => arr.findIndex(x => x._id === u._id) === idx)
+                                            .filter(u => u._id !== user?._id);
+
+                                        const allowed = user?.role === 'worker'
+                                            ? all.filter(u => u._id === gig.client?._id)
+                                            : user?.role === 'client'
+                                                ? all.filter(u => u._id !== gig.client?._id)
+                                                : all;
+
+                                        return allowed.map(u => (
                                             <option key={u._id} value={u._id}>{u.name}</option>
-                                        ))}
+                                        ));
+                                    })()}
                                 </select>
                                 <textarea value={chatText} onChange={e => setChatText(e.target.value)} rows={2} placeholder="Write a message" />
                                 <input
@@ -527,6 +696,12 @@ const GigDetail = () => {
                             <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Payment</span>
                             <span style={{ fontSize: '0.85rem', fontWeight: 600, textTransform: 'capitalize' }}>{gig.paymentStatus || 'unpaid'}</span>
                         </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.75rem 0', borderTop: '1px solid var(--border)' }}>
+                            <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Work Hours</span>
+                            <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>
+                                {gig.totalWorkHours ? `${gig.totalWorkHours} hrs` : '-'}
+                            </span>
+                        </div>
 
                         {gig.worker && (
                             <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.75rem 0', borderTop: '1px solid var(--border)' }}>
@@ -536,7 +711,7 @@ const GigDetail = () => {
                         )}
 
                         <div style={{ marginTop: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                            {isWorker && gig.status === 'open' && !isOwner && (
+                            {isWorker && ['open', 'pending'].includes(gig.status) && !isOwner && !alreadyApplied && (
                                 <button
                                     className="btn btn-primary"
                                     style={{ width: '100%' }}
@@ -546,10 +721,40 @@ const GigDetail = () => {
                                 </button>
                             )}
 
+                            {isWorker && alreadyApplied && (
+                                <button className="btn btn-ghost" style={{ width: '100%' }} disabled>
+                                    ✅ Already Applied
+                                </button>
+                            )}
+
+                            {isAssignedWorker && gig.status === 'accepted' && (
+                                <button className="btn btn-success" style={{ width: '100%' }} onClick={handleStartWork}>
+                                    ▶ Start Work
+                                </button>
+                            )}
+
+                            {isAssignedWorker && gig.status === 'in-progress' && (
+                                <button className="btn btn-success" style={{ width: '100%' }} onClick={handleStopWork}>
+                                    ⏹ Stop Work
+                                </button>
+                            )}
+
+                            {isAssignedWorker && gig.status === 'completed' && (
+                                <button className="btn btn-secondary" style={{ width: '100%' }} onClick={handleDownloadInvoice}>
+                                    🧾 Download Invoice
+                                </button>
+                            )}
+
                             {!isAuthenticated && (
                                 <Link to="/login" className="btn btn-primary" style={{ width: '100%', textAlign: 'center' }}>
                                     🔒 Sign In to Apply
                                 </Link>
+                            )}
+
+                            {isAuthenticated && !isAdmin && (
+                                <button className="btn btn-ghost" style={{ width: '100%' }} onClick={handleReportGig}>
+                                    Report Gig
+                                </button>
                             )}
 
                             {(isOwner || isAdmin) && (
@@ -598,14 +803,58 @@ const GigDetail = () => {
             <Modal isOpen={applyModal} onClose={() => setApplyModal(false)} title="Submit Application">
                 <form className="modal-form" onSubmit={handleApply}>
                     <div className="form-group">
-                        <label>Cover Letter / Proposal *</label>
+                        <label>Work Experience *</label>
                         <textarea
-                            placeholder="Describe your experience and why you're the best fit for this job..."
-                            value={proposal}
-                            onChange={e => setProposal(e.target.value)}
+                            placeholder="Write your work experience briefly..."
+                            value={workerExperience}
+                            onChange={e => setWorkerExperience(e.target.value)}
                             required
-                            rows={5}
+                            rows={4}
                         />
+                    </div>
+                    <div className="form-group">
+                        <label>Your Skills *</label>
+                        <input
+                            type="text"
+                            placeholder="Example: Pipe Fitting, Fixture Installation"
+                            value={workerSkills}
+                            onChange={e => setWorkerSkills(e.target.value)}
+                            required
+                        />
+                    </div>
+                    <div className="form-group">
+                        <label>Phone Number *</label>
+                        <input
+                            type="tel"
+                            inputMode="numeric"
+                            pattern="[0-9]{10,15}"
+                            placeholder="Enter digits only"
+                            value={workerPhone}
+                            onChange={e => setWorkerPhone(e.target.value.replace(/\D/g, ''))}
+                            required
+                        />
+                    </div>
+                    <div className="form-group">
+                        <label>Address *</label>
+                        <input
+                            type="text"
+                            placeholder="Enter your address/location"
+                            value={workerAddress}
+                            onChange={e => setWorkerAddress(e.target.value)}
+                            required
+                        />
+                    </div>
+                    <div className="form-group">
+                        <label>Work Type *</label>
+                        <select
+                            value={workerWorkType}
+                            onChange={e => setWorkerWorkType(e.target.value)}
+                            required
+                        >
+                            {WORK_TYPES.map((type) => (
+                                <option key={type} value={type}>{type}</option>
+                            ))}
+                        </select>
                     </div>
                     <div className="form-group">
                         <label>Your Price (₹) *</label>

@@ -25,7 +25,7 @@ const GigList = () => {
     const fetchGigs = useCallback(async () => {
         setLoading(true);
         try {
-            const params = { status: 'open' };
+            const params = {};
             if (debouncedSearch) params.search = debouncedSearch;
             if (category) params.category = category;
             if (subcategory) params.subcategory = subcategory;
@@ -56,7 +56,7 @@ const GigList = () => {
                     <div>
                         <h1 className="page-title">Browse Jobs</h1>
                         <p className="page-subtitle">
-                            {gigs.length} open {gigs.length === 1 ? 'job' : 'jobs'} available
+                            {gigs.length} {gigs.length === 1 ? 'job' : 'jobs'} available
                             {!isAuthenticated && ' — Sign in to apply'}
                         </p>
                     </div>

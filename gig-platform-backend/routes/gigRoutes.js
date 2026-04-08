@@ -11,6 +11,8 @@ import {
   markGigPaymentDone,
   completeGig,
   generateGigInvoice,
+  startGigWork,
+  stopGigWork,
 } from "../controllers/gigController.js";
 import { protect } from "../middleware/authMiddleware.js";
 
@@ -24,6 +26,8 @@ router.get("/categories", getGigCategories);
 router.get("/user/my-gigs", protect, getMyGigs);
 router.put("/:id/payment", protect, markGigPaymentDone);
 router.put("/:id/complete", protect, completeGig);
+router.put("/:id/start", protect, startGigWork);
+router.put("/:id/stop", protect, stopGigWork);
 router.get("/:id/invoice", protect, generateGigInvoice);
 
 // Parameterized routes

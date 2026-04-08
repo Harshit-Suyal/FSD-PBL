@@ -1,4 +1,10 @@
 import User from "../models/User.js";
+import Gig from "../models/Gig.js";
+import Application from "../models/Application.js";
+import Review from "../models/Review.js";
+import Payment from "../models/Payment.js";
+import Message from "../models/Message.js";
+import Report from "../models/Report.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 
@@ -11,7 +17,7 @@ const generateToken = (id) => {
 // @access  Public
 export const registerUser = async (req, res) => {
   try {
-    const { name, email, password, role } = req.body;
+    const { name, email, password, role, phone, gender } = req.body;
 
     if (!name || !email || !password) {
       return res.status(400).json({ message: "Name, email, and password are required" });
@@ -22,8 +28,20 @@ export const registerUser = async (req, res) => {
       return res.status(400).json({ message: "User already exists with this email" });
     }
 
-    // Prevent self-assigning admin
-    const safeRole = role === "admin" ? "worker" : (role || "worker");
+    let safeRole = role || "worker";
+    if (!["worker", "client", "admin"].includes(safeRole)) {
+      safeRole = "worker";
+    }
+
+    const cleanedPhone = String(phone || "").trim();
+    if (cleanedPhone && !/^\d{10,15}$/.test(cleanedPhone)) {
+      return res.status(400).json({ message: "Phone number must contain only digits (10 to 15)." });
+    }
+
+    const safeGender = String(gender || "").trim().toLowerCase();
+    if (!safeGender || !["male", "female"].includes(safeGender)) {
+      return res.status(400).json({ message: "Gender must be either Male or Female." });
+    }
 
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
@@ -33,6 +51,8 @@ export const registerUser = async (req, res) => {
       email: email.toLowerCase(),
       password: hashedPassword,
       role: safeRole,
+      phone: cleanedPhone,
+      gender: safeGender,
     });
 
     res.status(201).json({
@@ -44,6 +64,7 @@ export const registerUser = async (req, res) => {
       skills: user.skills,
       location: user.location,
       phone: user.phone,
+      gender: user.gender,
       workType: user.workType,
       avatar: user.avatar,
       token: generateToken(user._id),
@@ -87,6 +108,7 @@ export const loginUser = async (req, res) => {
       skills: user.skills,
       location: user.location,
       phone: user.phone,
+      gender: user.gender,
       workType: user.workType,
       avatar: user.avatar,
       token: generateToken(user._id),
@@ -121,13 +143,26 @@ export const updateUserProfile = async (req, res) => {
       return res.status(404).json({ message: "User not found" });
     }
 
-    const { name, bio, skills, location, phone, workType, avatar, password } = req.body;
+    const { name, bio, skills, location, phone, gender, workType, avatar, password } = req.body;
 
     if (name) user.name = name;
     if (bio !== undefined) user.bio = bio;
     if (skills) user.skills = skills;
     if (location !== undefined) user.location = location;
-    if (phone !== undefined) user.phone = phone;
+    if (phone !== undefined) {
+      const cleanedPhone = String(phone || "").trim();
+      if (cleanedPhone && !/^\d{10,15}$/.test(cleanedPhone)) {
+        return res.status(400).json({ message: "Phone number must contain only digits (10 to 15)." });
+      }
+      user.phone = cleanedPhone;
+    }
+    if (gender !== undefined) {
+      const safeGender = String(gender || "").trim().toLowerCase();
+      if (safeGender && !["male", "female"].includes(safeGender)) {
+        return res.status(400).json({ message: "Gender must be either Male or Female." });
+      }
+      user.gender = safeGender;
+    }
     if (workType !== undefined) user.workType = workType;
     if (avatar !== undefined) user.avatar = avatar;
 
@@ -147,6 +182,7 @@ export const updateUserProfile = async (req, res) => {
       skills: updatedUser.skills,
       location: updatedUser.location,
       phone: updatedUser.phone,
+      gender: updatedUser.gender,
       workType: updatedUser.workType,
       avatar: updatedUser.avatar,
     });
@@ -194,6 +230,145 @@ export const toggleUserStatus = async (req, res) => {
     user.isActive = !user.isActive;
     await user.save();
     res.json({ message: `User ${user.isActive ? "activated" : "deactivated"}`, isActive: user.isActive });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// @desc    Delete user (admin only)
+// @route   DELETE /api/users/:id
+// @access  Private/Admin
+export const deleteUser = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (id === req.user._id.toString()) {
+      return res.status(400).json({ message: "You cannot delete your own admin account" });
+    }
+
+    const target = await User.findById(id);
+    if (!target) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    if (target.role === "admin") {
+      const admins = await User.countDocuments({ role: "admin" });
+      if (admins <= 1) {
+        return res.status(400).json({ message: "Cannot delete the last admin account" });
+      }
+    }
+
+    const clientGigs = await Gig.find({ client: id }).select("_id");
+    const gigIds = clientGigs.map((gig) => gig._id);
+
+    if (gigIds.length) {
+      await Promise.all([
+        Application.deleteMany({ gig: { $in: gigIds } }),
+        Review.deleteMany({ gig: { $in: gigIds } }),
+        Payment.deleteMany({ gig: { $in: gigIds } }),
+        Message.deleteMany({ gig: { $in: gigIds } }),
+        Report.deleteMany({ targetGig: { $in: gigIds } }),
+        Gig.deleteMany({ _id: { $in: gigIds } }),
+      ]);
+    }
+
+    await Promise.all([
+      Application.deleteMany({ $or: [{ worker: id }, { client: id }] }),
+      Review.deleteMany({ $or: [{ reviewer: id }, { reviewee: id }] }),
+      Payment.deleteMany({ $or: [{ client: id }, { worker: id }] }),
+      Message.deleteMany({ $or: [{ sender: id }, { receiver: id }] }),
+      Report.deleteMany({
+        $or: [{ reporter: id }, { targetUser: id }, { resolvedBy: id }],
+      }),
+      Gig.updateMany(
+        { $or: [{ worker: id }, { assignedWorkers: id }] },
+        {
+          $set: { worker: null },
+          $pull: { assignedWorkers: id },
+        }
+      ),
+      User.findByIdAndDelete(id),
+    ]);
+
+    res.json({ message: "User and related records deleted" });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// @desc    Get worker updates (application outcomes, payment updates, invoice-ready jobs)
+// @route   GET /api/users/worker-updates
+// @access  Private (Worker)
+export const getWorkerUpdates = async (req, res) => {
+  try {
+    if (req.user.role !== "worker") {
+      return res.status(403).json({ message: "Only workers can access worker updates" });
+    }
+
+    const [applications, payments, completedGigs, chatMessages] = await Promise.all([
+      Application.find({ worker: req.user._id, status: { $in: ["accepted", "rejected"] } })
+        .populate("gig", "title")
+        .populate("client", "name email phone")
+        .sort({ updatedAt: -1 }),
+      Payment.find({ worker: req.user._id })
+        .populate("gig", "title")
+        .sort({ paidAt: -1 }),
+      Gig.find({ assignedWorkers: req.user._id, status: "completed" })
+        .populate("client", "name")
+        .sort({ updatedAt: -1 }),
+      Message.find({ receiver: req.user._id })
+        .populate("gig", "title")
+        .populate("sender", "name role")
+        .sort({ createdAt: -1 }),
+    ]);
+
+    const appUpdates = applications.map((app) => ({
+      type: "application",
+      status: app.status,
+      gigId: app.gig?._id,
+      gigTitle: app.gig?.title || "Untitled Job",
+      message: app.status === "accepted"
+        ? `You have been accepted for the job. For further information, contact the client (${app.client?.name || "Client"}${app.client?.phone ? `, ${app.client.phone}` : app.client?.email ? `, ${app.client.email}` : ""}).`
+        : "Thank you for applying!!",
+      createdAt: app.updatedAt || app.createdAt,
+    }));
+
+    const paymentUpdates = payments.map((payment) => ({
+      type: "payment",
+      gigId: payment.gig?._id,
+      gigTitle: payment.gig?.title || "Untitled Job",
+      amount: payment.amount,
+      message: `Payment received: ₹${Number(payment.amount || 0).toLocaleString("en-IN")}`,
+      createdAt: payment.paidAt || payment.createdAt,
+    }));
+
+    const invoiceUpdates = completedGigs.map((gig) => ({
+      type: "invoice",
+      gigId: gig._id,
+      gigTitle: gig.title,
+      invoiceReady: true,
+      totalWorkHours: gig.totalWorkHours || 0,
+      message: "Job completed. Invoice is ready to download.",
+      createdAt: gig.workEndedAt || gig.updatedAt || gig.createdAt,
+    }));
+
+    const chatUpdates = chatMessages.map((msg) => ({
+      type: "chat",
+      gigId: msg.gig?._id,
+      gigTitle: msg.gig?.title || "Untitled Job",
+      senderName: msg.sender?.name || "Client",
+      senderRole: msg.sender?.role || "client",
+      message: msg.amountOffer
+        ? `${msg.sender?.name || "Client"} sent an offer: ₹${Number(msg.amountOffer || 0).toLocaleString("en-IN")}`
+        : `${msg.sender?.name || "Client"}: ${msg.message}`,
+      createdAt: msg.createdAt,
+    }));
+
+    const updates = [...chatUpdates, ...appUpdates, ...paymentUpdates, ...invoiceUpdates].sort(
+      (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
+    );
+
+    res.json(updates);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

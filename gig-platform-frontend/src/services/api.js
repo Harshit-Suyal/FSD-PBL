@@ -2,18 +2,47 @@ import axios from 'axios';
 
 const BASE_URL = 'http://localhost:5000/api';
 
-const api = axios.create({ baseURL: BASE_URL });
+const api = axios.create({ baseURL: BASE_URL });//reusable axios object create krta hai yeh
+
+const getStorage = () => {
+    if (typeof window === 'undefined') return null;
+    return window.sessionStorage;
+};
+
+const decodeJwtPayload = (token) => {
+    try {
+        const base64Url = token?.split('.')[1];
+        if (!base64Url) return null;
+        const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+        const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), '=');
+        return JSON.parse(atob(padded));
+    } catch {
+        return null;
+    }
+};
 
 const getAuthToken = () => {
-    const direct = localStorage.getItem('token');
-    if (direct && direct !== 'undefined' && direct !== 'null') return direct;
+    const storage = getStorage();
+    const direct = storage?.getItem('token');
+    const normalizedDirect = direct && direct !== 'undefined' && direct !== 'null' ? direct : null;
 
+    let storedUser = null;
     try {
-        const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
-        const fallback = storedUser?.token || storedUser?.accessToken;
-        if (fallback && fallback !== 'undefined' && fallback !== 'null') return fallback;
+        storedUser = JSON.parse(storage?.getItem('user') || 'null');
     } catch {
+        storedUser = null;
     }
+
+    const fallback = storedUser?.token || storedUser?.accessToken;
+    const normalizedFallback = fallback && fallback !== 'undefined' && fallback !== 'null' ? fallback : null;
+    const token = normalizedDirect || normalizedFallback;
+
+    if (!token) return null;
+    if (!storedUser?._id) return token;
+
+    const payload = decodeJwtPayload(token);
+    if (!payload) return token;
+    if (payload?.id && String(payload.id) === String(storedUser._id)) return token;
 
     return null;
 };
@@ -31,9 +60,11 @@ export const registerUser = (data) => api.post('/users/register', data);
 export const loginUser = (data) => api.post('/users/login', data);
 export const getMyProfile = () => api.get('/users/profile');
 export const updateProfile = (data) => api.put('/users/profile', data);
+export const getWorkerUpdates = () => api.get('/users/worker-updates');
 export const getUserById = (id) => api.get(`/users/${id}`);
 export const getAllUsers = () => api.get('/users');
 export const toggleStatus = (id) => api.put(`/users/${id}/toggle-status`);
+export const deleteUserByAdmin = (id) => api.delete(`/users/${id}`);
 
 // ── Gigs ──
 export const getGigs = (params) => api.get('/gigs', { params });
@@ -45,6 +76,8 @@ export const deleteGig = (id) => api.delete(`/gigs/${id}`);
 export const getMyGigs = () => api.get('/gigs/user/my-gigs');
 export const markGigPaymentDone = (id) => api.put(`/gigs/${id}/payment`);
 export const completeGig = (id) => api.put(`/gigs/${id}/complete`);
+export const startGigWork = (id) => api.put(`/gigs/${id}/start`);
+export const stopGigWork = (id) => api.put(`/gigs/${id}/stop`);
 export const getGigInvoice = (id) => api.get(`/gigs/${id}/invoice`);
 
 // ── Applications ──
@@ -59,10 +92,18 @@ export const addReview = (gigId, data) => api.post(`/reviews/${gigId}`, data);
 export const getUserReviews = (userId) => api.get(`/reviews/user/${userId}`);
 export const getGigReviews = (gigId) => api.get(`/reviews/gig/${gigId}`);
 
+// Reports
+export const createReport = (data) => api.post('/reports', data);
+
 // ── Admin ──
 export const getAdminStats = () => api.get('/admin/stats');
 export const getAdminGigs = () => api.get('/admin/gigs');
 export const adminDeleteGig = (id) => api.delete(`/admin/gigs/${id}`);
+export const getAdminReviews = () => api.get('/admin/reviews');
+export const adminDeleteReview = (id) => api.delete(`/admin/reviews/${id}`);
+export const getAdminReports = () => api.get('/admin/reports');
+export const resolveAdminReport = (id, payload) => api.put(`/admin/reports/${id}/resolve`, payload);
+export const getAdminPayments = () => api.get('/admin/payments');
 
 // ── Chat ──
 export const getGigMessages = (gigId) => api.get(`/chat/${gigId}`);

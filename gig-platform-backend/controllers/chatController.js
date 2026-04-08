@@ -33,7 +33,17 @@ export const getGigMessages = async (req, res) => {
       return res.status(access.status).json({ message: access.message });
     }
 
-    const messages = await Message.find({ gig: req.params.gigId })
+    const query = { gig: req.params.gigId };
+
+    if (req.user.role === "worker") {
+      // Workers should only see messages in their own thread (to/from themselves).
+      query.$or = [{ sender: req.user.id }, { receiver: req.user.id }];
+    } else if (req.user.role === "client") {
+      // Clients should only see messages in their own thread with workers.
+      query.$or = [{ sender: req.user.id }, { receiver: req.user.id }];
+    }
+
+    const messages = await Message.find(query)
       .populate("sender", "name email")
       .populate("receiver", "name email")
       .sort({ createdAt: 1 });
@@ -72,7 +82,16 @@ export const sendGigMessage = async (req, res) => {
       return res.status(access.status).json({ message: access.message });
     }
 
-    const allowedReceivers = req.user.role === "admin" ? [] : Array.from(access.participants);
+    let allowedReceivers = [];
+    if (req.user.role === "worker") {
+      // Workers can message only the gig client.
+      allowedReceivers = [gig.client.toString()];
+    } else if (req.user.role === "client") {
+      // Clients can message workers who are part of this gig/application thread.
+      allowedReceivers = Array.from(access.participants).filter((id) => id !== gig.client.toString());
+    } else {
+      allowedReceivers = Array.from(access.participants);
+    }
 
     if (req.user.role !== "admin" && !allowedReceivers.includes(receiverId)) {
       return res.status(403).json({ message: "Receiver is not part of this chat" });

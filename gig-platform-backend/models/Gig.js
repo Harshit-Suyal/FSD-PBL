@@ -78,6 +78,19 @@ const gigSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    workStartedAt: {
+      type: Date,
+      default: null,
+    },
+    workEndedAt: {
+      type: Date,
+      default: null,
+    },
+    totalWorkHours: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
   },
   { timestamps: true }
 );

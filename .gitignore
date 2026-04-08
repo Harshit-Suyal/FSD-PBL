@@ -1,2 +1,14 @@
+# dependencies
 node_modules/
+gig-platform-backend/node_modules/
+gig-platform-frontend/node_modules/
+
+# env files
 .env
+gig-platform-backend/.env
+gig-platform-frontend/.env
+
+# build files
+dist/
+build/
+gig-platform-frontend/dist/

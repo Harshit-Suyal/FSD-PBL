@@ -5,7 +5,7 @@ import { useToast } from '../context/ToastContext';
 import { registerUser } from '../services/api';
 
 const Register = () => {
-    const [form, setForm] = useState({ name: '', email: '', password: '', confirm: '', role: 'worker' });
+    const [form, setForm] = useState({ name: '', email: '', phone: '', gender: '', password: '', confirm: '', role: 'worker' });
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
 
@@ -24,12 +24,25 @@ const Register = () => {
         if (form.password.length < 6) {
             return setError('Password must be at least 6 characters.');
         }
+        if (!/^\d{10,15}$/.test(String(form.phone || '').trim())) {
+            return setError('Phone number must contain only digits (10 to 15).');
+        }
+        if (!['male', 'female'].includes(form.gender)) {
+            return setError('Please select gender.');
+        }
         setLoading(true);
         try {
-            const { data } = await registerUser({ name: form.name, email: form.email, password: form.password, role: form.role });
+            const { data } = await registerUser({
+                name: form.name,
+                email: form.email,
+                phone: form.phone,
+                gender: form.gender,
+                password: form.password,
+                role: form.role,
+            });
             login(data);
             success(`Account created! Welcome, ${data.name} 🎉`);
-            navigate('/dashboard');
+            navigate(data.role === 'admin' ? '/admin' : '/dashboard');
         } catch (err) {
             setError(err.response?.data?.message || 'Registration failed. Please try again.');
         } finally {
@@ -41,13 +54,8 @@ const Register = () => {
         <div className="auth-page">
             <div className="auth-bg" />
             <div className="auth-card animate-slide-up">
-                <div className="auth-logo">
-                    <div className="nav-logo-icon">⚡</div>
-                    <span style={{ fontWeight: 800, fontSize: '1.2rem' }}>GigConnect</span>
-                </div>
 
                 <h1 className="auth-title">Create your account</h1>
-                <p className="auth-subtitle">Join thousands of workers and clients on GigConnect</p>
 
                 {error && (
                     <div className="alert error" style={{ marginBottom: '1rem' }}>
@@ -83,38 +91,47 @@ const Register = () => {
                     </div>
 
                     <div className="form-group">
+                        <label htmlFor="reg-phone">Phone number</label>
+                        <input
+                            id="reg-phone"
+                            name="phone"
+                            type="tel"
+                            inputMode="numeric"
+                            placeholder="Enter digits only"
+                            value={form.phone}
+                            onChange={e => setForm(prev => ({ ...prev, phone: e.target.value.replace(/\D/g, '') }))}
+                            required
+                        />
+                    </div>
+
+                    <div className="form-group">
+                        <label htmlFor="reg-gender">Gender</label>
+                        <select
+                            id="reg-gender"
+                            name="gender"
+                            value={form.gender}
+                            onChange={handleChange}
+                            required
+                        >
+                            <option value="">Select gender</option>
+                            <option value="male">Male</option>
+                            <option value="female">Female</option>
+                        </select>
+                    </div>
+
+                    <div className="form-group">
                         <label>I want to join as</label>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-                            {['worker', 'client'].map(r => (
-                                <label
-                                    key={r}
-                                    htmlFor={`role-${r}`}
-                                    style={{
-                                        display: 'flex', flexDirection: 'column', alignItems: 'center',
-                                        gap: '0.4rem', padding: '1rem',
-                                        border: `2px solid ${form.role === r ? 'var(--primary)' : 'var(--border)'}`,
-                                        borderRadius: 'var(--radius-lg)',
-                                        background: form.role === r ? 'rgba(99,102,241,0.08)' : 'var(--bg-elevated)',
-                                        cursor: 'pointer', transition: 'var(--transition)',
-                                        fontSize: '0.85rem', fontWeight: 600,
-                                        color: form.role === r ? 'var(--primary-light)' : 'var(--text-secondary)',
-                                        textTransform: 'capitalize',
-                                    }}
-                                >
-                                    <input
-                                        id={`role-${r}`}
-                                        type="radio"
-                                        name="role"
-                                        value={r}
-                                        checked={form.role === r}
-                                        onChange={handleChange}
-                                        style={{ display: 'none' }}
-                                    />
-                                    <span style={{ fontSize: '1.8rem' }}>{r === 'worker' ? '👷' : '🏢'}</span>
-                                    {r}
-                                </label>
-                            ))}
-                        </div>
+                        <select
+                            id="reg-role"
+                            name="role"
+                            value={form.role}
+                            onChange={handleChange}
+                            required
+                        >
+                            <option value="worker">Worker</option>
+                            <option value="client">Client</option>
+                            <option value="admin">Admin</option>
+                        </select>
                     </div>
 
                     <div className="form-group">

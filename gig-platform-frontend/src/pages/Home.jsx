@@ -25,14 +25,13 @@ const Home = () => {
 
     return (
         <div className="animate-fade-in">
-            {/* ── Hero ── */}
             <section className="hero">
                 <div className="hero-bg" />
                 <div className="hero-grid-bg" />
                 <div className="container">
                     <div className="hero-content">
                         <div className="hero-tag">
-                            <span>✦</span> The Modern Gig Economy Platform
+                          The Modern Gig Economy Platform
                         </div>
                         <h1 className="hero-title">
                             Connect. Collaborate.
@@ -41,15 +40,14 @@ const Home = () => {
                         </h1>
                         <p className="hero-subtitle">
                             GigConnect bridges skilled Workers with Clients who need results.
-                            Browse jobs, submit proposals, and build your freelance career — all in one place.
                         </p>
                         <div className="hero-actions">
                             <Link to="/gigs" className="btn btn-primary btn-lg">
-                                Browse Jobs →
+                                Browse Jobs
                             </Link>
                             {!isAuthenticated && (
                                 <Link to="/register" className="btn btn-secondary btn-lg">
-                                    Get Started Free
+                                    Get Started
                                 </Link>
                             )}
                             {isAuthenticated && (
@@ -58,32 +56,17 @@ const Home = () => {
                                 </Link>
                             )}
                         </div>
-
-                        <div className="hero-stats">
-                            {[
-                                { value: '500+', label: 'Active Jobs' },
-                                { value: '1.2K+', label: 'Skilled Workers' },
-                                { value: '98%', label: 'Satisfaction Rate' },
-                            ].map((s, i) => (
-                                <div key={i} className="hero-stat">
-                                    <div className="hero-stat-value">{s.value}</div>
-                                    <div className="hero-stat-label">{s.label}</div>
-                                </div>
-                            ))}
-                        </div>
                     </div>
                 </div>
             </section>
-
-            {/* ── Features ── */}
             <section className="section" style={{ background: 'var(--bg-surface)' }}>
                 <div className="container">
                     <div style={{ textAlign: 'center', marginBottom: '3rem' }}>
                         <h2 style={{ fontSize: '2rem', fontWeight: 800, marginBottom: '0.75rem' }}>
-                            Everything you need to succeed
+                            You will see in this application
                         </h2>
                         <p style={{ color: 'var(--text-secondary)', maxWidth: 520, margin: '0 auto' }}>
-                            Built for the modern gig economy with industry-standard security and seamless workflows.
+                            An application built for the modern gig economy with industry-standard security and seamless workflows.
                         </p>
                     </div>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '1.25rem' }}>
@@ -153,8 +136,6 @@ const Home = () => {
                     )}
                 </div>
             </section>
-
-            {/* ── How It Works ── */}
             <section className="section" style={{ background: 'var(--bg-surface)' }}>
                 <div className="container">
                     <div style={{ textAlign: 'center', marginBottom: '3rem' }}>
@@ -166,6 +147,7 @@ const Home = () => {
                             { step: '02', title: 'Browse or Post', desc: 'Clients post jobs with a budget. Workers browse & find matching opportunities.', icon: '🔍' },
                             { step: '03', title: 'Apply & Negotiate', desc: 'Workers submit proposals with a price. Clients review and accept the best fit.', icon: '📝' },
                             { step: '04', title: 'Complete & Review', desc: 'Finish the job and leave mutual reviews to build your reputation.', icon: '⭐' },
+                            { step: '05', title: 'Success', desc: 'Celebrate your achievements and build your professional network.', icon: '🏆' },
                         ].map((item) => (
                             <div key={item.step} style={{ textAlign: 'center' }}>
                                 <div style={{
@@ -184,7 +166,6 @@ const Home = () => {
                 </div>
             </section>
 
-            {/* ── Footer ── */}
             <footer style={{
                 background: 'var(--bg-surface)',
                 borderTop: '1px solid var(--border)',
@@ -196,7 +177,7 @@ const Home = () => {
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', fontWeight: 700, fontSize: '1rem', color: 'var(--text-primary)', marginBottom: '0.5rem' }}>
                     ⚡ GigConnect
                 </div>
-                © 2026 GigConnect. Bridging skills and opportunities.
+                PBL project for Full stack development
             </footer>
         </div>
     );

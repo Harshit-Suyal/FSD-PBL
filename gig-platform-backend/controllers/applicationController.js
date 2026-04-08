@@ -23,10 +23,26 @@ export const applyForGig = async (req, res) => {
             return res.status(403).json({ message: "Only workers can apply for gigs" });
         }
 
-        const { proposal, proposedPrice } = req.body;
-        if (!proposal || !proposedPrice) {
-            return res.status(400).json({ message: "Proposal and proposed price are required" });
+        const { proposal, proposedPrice, workerExperience, workerSkills } = req.body;
+        const normalizedSkills = Array.isArray(workerSkills)
+            ? workerSkills.map((skill) => String(skill).trim()).filter(Boolean)
+            : String(workerSkills || "")
+                .split(",")
+                .map((skill) => skill.trim())
+                .filter(Boolean);
+        const trimmedExperience = String(workerExperience || "").trim();
+        const price = Number(proposedPrice);
+
+        if (!trimmedExperience || normalizedSkills.length === 0 || !Number.isFinite(price) || price <= 0) {
+            return res.status(400).json({
+                message: "Work experience, skills and valid proposed price are required",
+            });
         }
+
+        const generatedProposal = String(proposal || "").trim() || [
+            `Experience: ${trimmedExperience}`,
+            `Skills: ${normalizedSkills.join(", ")}`,
+        ].join("\n");
 
         const gigId = req.params.gigId;
         const gig = await Gig.findById(gigId);
@@ -52,8 +68,8 @@ export const applyForGig = async (req, res) => {
             gig: gigId,
             worker: req.user._id,
             client: gig.client,
-            proposal,
-            proposedPrice,
+            proposal: generatedProposal,
+            proposedPrice: price,
         });
 
         const populated = await Application.findById(application._id)

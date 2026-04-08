@@ -34,10 +34,7 @@ const Login = () => {
         <div className="auth-page">
             <div className="auth-bg" />
             <div className="auth-card animate-slide-up">
-                <div className="auth-logo">
-                    <div className="nav-logo-icon">⚡</div>
-                    <span style={{ fontWeight: 800, fontSize: '1.2rem' }}>GigConnect</span>
-                </div>
+                
 
                 <h1 className="auth-title">Welcome back</h1>
                 <p className="auth-subtitle">Sign in to your account to continue</p>
