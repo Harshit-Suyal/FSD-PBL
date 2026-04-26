@@ -5,6 +5,7 @@ import Review from "../models/Review.js";
 import Payment from "../models/Payment.js";
 import Report from "../models/Report.js";
 import Message from "../models/Message.js";
+import Notification from "../models/Notification.js";
 
 // @desc    Get platform-wide statistics
 // @route   GET /api/admin/stats
@@ -78,6 +79,7 @@ export const adminDeleteGig = async (req, res) => {
             Review.deleteMany({ gig: gig._id }),
             Payment.deleteMany({ gig: gig._id }),
             Message.deleteMany({ gig: gig._id }),
+            Notification.deleteMany({ relatedGig: gig._id }),
             Report.deleteMany({ targetGig: gig._id }),
             gig.deleteOne(),
         ]);
@@ -178,6 +180,7 @@ export const resolveReport = async (req, res) => {
                     Review.deleteMany({ gig: gig._id }),
                     Payment.deleteMany({ gig: gig._id }),
                     Message.deleteMany({ gig: gig._id }),
+                    Notification.deleteMany({ relatedGig: gig._id }),
                     Report.deleteMany({ targetGig: gig._id }),
                     gig.deleteOne(),
                 ]);

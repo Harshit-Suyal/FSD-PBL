@@ -1,8 +1,19 @@
 import React, { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useSocket } from '../context/SocketContext';
 import { useToast } from '../context/ToastContext';
-import { getMyGigs, createGig, deleteGig, getMyApplications, getMyProfile, getWorkerUpdates, getGigInvoice } from '../services/api';
+import {
+    getMyGigs,
+    createGig,
+    deleteGig,
+    getMyApplications,
+    getMyProfile,
+    getWorkerUpdates,
+    getGigInvoice,
+    markNotificationAsRead,
+    markAllNotificationsAsRead,
+} from '../services/api';
 import Modal from '../components/Modal';
 import { CATEGORY_LIST, JOB_CATEGORIES, WORK_TYPES, CATEGORY_SKILLS, SUBCATEGORY_SKILLS } from '../constants/gigMeta';
 
@@ -107,14 +118,22 @@ const validateGigForm = (form) => {
 
 const Dashboard = () => {
     const { user, updateUser } = useAuth();
+    const { notifications, setNotifications } = useSocket();
     const { success, error: toastError } = useToast();
     const navigate = useNavigate();
+    const location = useLocation();
 
     useEffect(() => {
         if (user?.role === 'admin') {
             navigate('/admin', { replace: true });
         }
     }, [user?.role, navigate]);
+
+    useEffect(() => {
+        if (location.state?.tab) {
+            setActiveTab(location.state.tab);
+        }
+    }, [location.state]);
 
     const [activeTab, setActiveTab] = useState(user?.role === 'client' ? 'jobs' : 'applications');
     const [myGigs, setMyGigs] = useState([]);
@@ -125,6 +144,7 @@ const Dashboard = () => {
     const [submitting, setSubmitting] = useState(false);
     const [gigForm, setGigForm] = useState(getInitialGigForm());
     const [gigErrors, setGigErrors] = useState({});
+    const unreadNotificationCount = notifications.filter((notification) => !notification.isRead).length;
 
     useEffect(() => {
         const load = async () => {
@@ -227,6 +247,25 @@ const Dashboard = () => {
         }
     };
 
+    const handleMarkNotificationRead = async (notificationId) => {
+        try {
+            const { data } = await markNotificationAsRead(notificationId);
+            setNotifications((prev) => prev.map((notification) => (notification._id === notificationId ? data : notification)));
+        } catch (err) {
+            toastError(err.response?.data?.message || 'Failed to update notification');
+        }
+    };
+
+    const handleMarkAllNotificationsRead = async () => {
+        try {
+            await markAllNotificationsAsRead();
+            setNotifications((prev) => prev.map((notification) => ({ ...notification, isRead: true })));
+            success('All notifications marked as read.');
+        } catch (err) {
+            toastError(err.response?.data?.message || 'Failed to update notifications');
+        }
+    };
+
     const getInitials = (name = '') =>
         name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
 
@@ -263,6 +302,7 @@ const Dashboard = () => {
     const SIDEBAR_TABS = user?.role === 'client'
         ? [
             { id: 'jobs', label: 'My Jobs', icon: '📋' },
+            { id: 'notifications', label: 'Notifications', icon: '🔔' },
             { id: 'history', label: 'History', icon: '🕘' },
             { id: 'profile', label: 'Profile', icon: '👤' },
         ]
@@ -270,6 +310,7 @@ const Dashboard = () => {
             { id: 'applications', label: 'My Applications', icon: '📨' },
             { id: 'active', label: 'Active Jobs', icon: '⚡' },
             { id: 'messages', label: 'Messages', icon: '💬' },
+            { id: 'notifications', label: 'Notifications', icon: '🔔' },
             { id: 'history', label: 'History', icon: '🕘' },
             { id: 'profile', label: 'Profile', icon: '👤' },
         ];
@@ -642,6 +683,53 @@ const Dashboard = () => {
                                                 {item.type === 'invoice' && item.gigId && (
                                                     <button className="btn btn-secondary btn-sm" onClick={() => handleDownloadInvoice(item.gigId)}>
                                                         Download Invoice
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {activeTab === 'notifications' && (
+                    <div>
+                        <div className="section-header">
+                            <h2 className="section-title">Notifications{unreadNotificationCount > 0 ? ` (${unreadNotificationCount} unread)` : ''}</h2>
+                            <button className="btn btn-ghost btn-sm" onClick={handleMarkAllNotificationsRead}>
+                                Mark all as read
+                            </button>
+                        </div>
+
+                        {notifications.length === 0 ? (
+                            <div className="empty-state">
+                                <div className="empty-state-icon">🔔</div>
+                                <h3>No notifications yet</h3>
+                                <p>Selected workers, rejected applicants, payment updates, and live system alerts will appear here.</p>
+                            </div>
+                        ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.9rem' }}>
+                                {notifications.map((notification) => (
+                                    <div key={notification._id} className="card" style={{ padding: '1rem', borderLeft: notification.isRead ? '4px solid var(--border)' : '4px solid var(--secondary)' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap' }}>
+                                            <div>
+                                                <p style={{ fontWeight: 700 }}>{notification.title}</p>
+                                                <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '0.35rem', whiteSpace: 'pre-wrap' }}>{notification.message}</p>
+                                                <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.35rem' }}>
+                                                    {new Date(notification.createdAt).toLocaleString()}
+                                                </p>
+                                            </div>
+                                            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'flex-start' }}>
+                                                {notification.relatedGig?._id && (
+                                                    <button className="btn btn-ghost btn-sm" onClick={() => navigate(`/gigs/${notification.relatedGig._id}`)}>
+                                                        View Job
+                                                    </button>
+                                                )}
+                                                {!notification.isRead && (
+                                                    <button className="btn btn-primary btn-sm" onClick={() => handleMarkNotificationRead(notification._id)}>
+                                                        Mark read
                                                     </button>
                                                 )}
                                             </div>

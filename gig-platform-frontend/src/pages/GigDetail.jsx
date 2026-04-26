@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useSocket } from '../context/SocketContext';
 import { useToast } from '../context/ToastContext';
 import {
     getGigById,
@@ -15,7 +16,9 @@ import {
     deleteGig,
     adminDeleteGig,
     updateGig,
-    markGigPaymentDone,
+    createPaymentOrder,
+    markTestPaymentPaid,
+    verifyRazorpayPayment,
     completeGig,
     startGigWork,
     stopGigWork,
@@ -31,6 +34,7 @@ import { CATEGORY_ICONS, CATEGORY_LIST, JOB_CATEGORIES, WORK_TYPES } from '../co
 const GigDetail = () => {
     const { id } = useParams();
     const { user, isAuthenticated, token, updateUser } = useAuth();
+    const { socket, joinGigRoom, leaveGigRoom } = useSocket();
     const { success, error: toastError, info } = useToast();
     const navigate = useNavigate();
 
@@ -58,6 +62,7 @@ const GigDetail = () => {
     const [chatLoading, setChatLoading] = useState(false);
     const [chatAllowed, setChatAllowed] = useState(false);
     const [alreadyApplied, setAlreadyApplied] = useState(false);
+    const [paymentLoading, setPaymentLoading] = useState(false);
 
     const isOwner = user && gig && gig.client?._id === user._id;
     const isWorker = user?.role === 'worker';
@@ -137,6 +142,43 @@ const GigDetail = () => {
         };
         load();
     }, [id, isAuthenticated, user?._id, user?.role]);
+
+    useEffect(() => {
+        if (!socket || !gig?._id || !isAuthenticated) return undefined;
+
+        joinGigRoom(id);
+
+        const handleGigUpdated = (updatedGig) => {
+            if (updatedGig?._id && String(updatedGig._id) === String(id)) {
+                setGig(updatedGig);
+            }
+        };
+
+        const handleMessageNew = (message) => {
+            const messageGigId = message?.gig?._id || message?.gig;
+            if (String(messageGigId) !== String(id)) return;
+
+            setMessages((prev) => (prev.some((item) => item._id === message._id) ? prev : [...prev, message]));
+        };
+
+        const handlePaymentUpdated = (payload) => {
+            const updatedGig = payload?.gig || payload;
+            if (updatedGig?._id && String(updatedGig._id) === String(id)) {
+                setGig(updatedGig);
+            }
+        };
+
+        socket.on('gig:updated', handleGigUpdated);
+        socket.on('message:new', handleMessageNew);
+        socket.on('payment:updated', handlePaymentUpdated);
+
+        return () => {
+            socket.off('gig:updated', handleGigUpdated);
+            socket.off('message:new', handleMessageNew);
+            socket.off('payment:updated', handlePaymentUpdated);
+            leaveGigRoom(id);
+        };
+    }, [socket, gig?._id, id, isAuthenticated, joinGigRoom, leaveGigRoom]);
 
     useEffect(() => {
         const loadMessages = async () => {
@@ -269,13 +311,92 @@ const GigDetail = () => {
         }
     };
 
+    const loadRazorpayScript = () => new Promise((resolve) => {
+        if (window.Razorpay) {
+            resolve(true);
+            return;
+        }
+
+        const script = document.createElement('script');
+        script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+        script.onload = () => resolve(true);
+        script.onerror = () => resolve(false);
+        document.body.appendChild(script);
+    });
+
     const handleMarkPayment = async () => {
+        const workerId = gig?.worker?._id || gig?.assignedWorkers?.[0]?._id;
+        if (!workerId) {
+            toastError('Select a worker before payment.');
+            return;
+        }
+
+        setPaymentLoading(true);
         try {
-            const { data } = await markGigPaymentDone(id);
-            setGig(data);
-            success('Payment marked done. Job moved to In Progress. 💳');
+            const { data } = await createPaymentOrder(id, { workerId });
+            const loaded = await loadRazorpayScript();
+
+            if (!loaded || !window.Razorpay) {
+                throw new Error('Razorpay checkout failed to load');
+            }
+
+            const options = {
+                key: data.keyId,
+                amount: data.order.amount,
+                currency: data.order.currency,
+                name: 'GigConnect',
+                description: `Payment for ${gig.title}`,
+                order_id: data.order.id,
+                prefill: {
+                    name: user?.name || '',
+                    email: user?.email || '',
+                    contact: user?.phone || '',
+                },
+                theme: { color: '#0f766e' },
+                handler: async (response) => {
+                    try {
+                        const verifyResponse = await verifyRazorpayPayment({
+                            razorpayOrderId: response.razorpay_order_id,
+                            razorpayPaymentId: response.razorpay_payment_id,
+                            razorpaySignature: response.razorpay_signature,
+                        });
+
+                        setGig(verifyResponse.data.gig);
+                        success('Payment verified successfully. 💳');
+                    } catch (error) {
+                        toastError(error.response?.data?.message || 'Failed to verify payment');
+                    } finally {
+                        setPaymentLoading(false);
+                    }
+                },
+                modal: {
+                    ondismiss: () => setPaymentLoading(false),
+                },
+            };
+
+            const razorpay = new window.Razorpay(options);
+            razorpay.on('payment.failed', async (response) => {
+                try {
+                    const fallback = await markTestPaymentPaid(id, {
+                        workerId,
+                        reason: response?.error?.description || 'test-flow-fallback',
+                    });
+                    if (fallback?.data?.gig) {
+                        setGig(fallback.data.gig);
+                        success('Test mode: payment marked done and job moved to In Progress. 💳');
+                    } else {
+                        toastError(response?.error?.description || 'Payment failed');
+                    }
+                } catch (fallbackError) {
+                    toastError(fallbackError.response?.data?.message || response?.error?.description || 'Payment failed');
+                } finally {
+                    setPaymentLoading(false);
+                }
+            });
+            razorpay.open();
         } catch (err) {
-            toastError(err.response?.data?.message || 'Failed to mark payment');
+            toastError(err.response?.data?.message || err.message || 'Failed to start payment');
+            setPaymentLoading(false);
         }
     };
 
@@ -342,7 +463,7 @@ const GigDetail = () => {
             }
 
             const { data } = await sendGigMessage(id, payload);
-            setMessages(prev => [...prev, data]);
+            setMessages(prev => (prev.some((item) => item._id === data._id) ? prev : [...prev, data]));
             setChatText('');
             setOfferAmount('');
         } catch (err) {
@@ -760,8 +881,8 @@ const GigDetail = () => {
                             {(isOwner || isAdmin) && (
                                 <>
                                     {isOwner && gig.status === 'accepted' && gig.paymentStatus !== 'paid' && (
-                                        <button className="btn btn-success" style={{ width: '100%' }} onClick={handleMarkPayment}>
-                                            💳 Mark Payment Done
+                                        <button className="btn btn-success" style={{ width: '100%' }} onClick={handleMarkPayment} disabled={paymentLoading}>
+                                            {paymentLoading ? 'Opening Razorpay...' : '💳 Pay with Razorpay'}
                                         </button>
                                     )}
                                     {isOwner && gig.status === 'in-progress' && (

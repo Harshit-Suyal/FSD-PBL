@@ -24,14 +24,32 @@ const paymentSchema = new mongoose.Schema(
       required: true,
       min: 1,
     },
+    razorpayOrderId: {
+      type: String,
+      default: null,
+      index: true,
+    },
+    razorpayPaymentId: {
+      type: String,
+      default: null,
+      index: true,
+    },
+    razorpaySignature: {
+      type: String,
+      default: null,
+    },
+    currency: {
+      type: String,
+      default: "INR",
+    },
     status: {
       type: String,
-      enum: ["paid"],
-      default: "paid",
+      enum: ["created", "pending", "paid", "failed"],
+      default: "created",
     },
     paidAt: {
       type: Date,
-      default: Date.now,
+      default: null,
     },
   },
   { timestamps: true }

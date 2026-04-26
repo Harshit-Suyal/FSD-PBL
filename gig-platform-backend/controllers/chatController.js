@@ -1,34 +1,10 @@
-import Gig from "../models/Gig.js";
 import Message from "../models/Message.js";
-import Application from "../models/Application.js";
-
-const buildParticipants = async (gigId, gig) => {
-  const applicantIds = await Application.distinct("worker", { gig: gigId });
-  return new Set([
-    gig.client.toString(),
-    ...gig.assignedWorkers.map((workerId) => workerId.toString()),
-    ...applicantIds.map((workerId) => workerId.toString()),
-  ]);
-};
-
-const ensureGigChatAccess = async (gigId, gig, userId, role) => {
-  if (!gig) return { ok: false, status: 404, message: "Gig not found" };
-  if (role === "admin") {
-    return { ok: true, participants: new Set() };
-  }
-
-  const participants = await buildParticipants(gigId, gig);
-  if (!participants.has(userId)) {
-    return { ok: false, status: 403, message: "Unauthorized chat access" };
-  }
-
-  return { ok: true, participants };
-};
+import { canAccessGigChat } from "../utils/chatAccess.js";
+import { emitToGig, emitToUser } from "../utils/socket.js";
 
 export const getGigMessages = async (req, res) => {
   try {
-    const gig = await Gig.findById(req.params.gigId);
-    const access = await ensureGigChatAccess(req.params.gigId, gig, req.user.id, req.user.role);
+    const access = await canAccessGigChat(req.params.gigId, req.user.id, req.user.role);
     if (!access.ok) {
       return res.status(access.status).json({ message: access.message });
     }
@@ -76,11 +52,12 @@ export const sendGigMessage = async (req, res) => {
       }
     }
 
-    const gig = await Gig.findById(req.params.gigId);
-    const access = await ensureGigChatAccess(req.params.gigId, gig, req.user.id, req.user.role);
+    const access = await canAccessGigChat(req.params.gigId, req.user.id, req.user.role);
     if (!access.ok) {
       return res.status(access.status).json({ message: access.message });
     }
+
+    const gig = access.gig;
 
     let allowedReceivers = [];
     if (req.user.role === "worker") {
@@ -113,6 +90,9 @@ export const sendGigMessage = async (req, res) => {
     const populated = await Message.findById(created._id)
       .populate("sender", "name email")
       .populate("receiver", "name email");
+
+    emitToGig(req.params.gigId, "message:new", populated);
+    emitToUser(receiverId, "message:new", populated);
 
     res.status(201).json(populated);
   } catch (error) {

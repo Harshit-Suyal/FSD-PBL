@@ -1,6 +1,7 @@
 import Gig from "../models/Gig.js";
 import Application from "../models/Application.js";
 import Payment from "../models/Payment.js";
+import Notification from "../models/Notification.js";
 import {
   ALLOWED_STATUS_TRANSITIONS,
   JOB_CATEGORIES,
@@ -314,6 +315,7 @@ export const deleteGig = async (req, res) => {
       return res.status(400).json({ message: "Cannot delete job with existing applications" });
     }
 
+    await Notification.deleteMany({ relatedGig: gig._id });
     await gig.deleteOne();
     res.json({ message: "Gig removed" });
   } catch (error) {
@@ -552,12 +554,22 @@ export const stopGigWork = async (req, res) => {
       return res.status(403).json({ message: "Only assigned worker can stop this job" });
     }
 
+    if (gig.status === "completed") {
+      return res.status(400).json({ message: "Job is already completed" });
+    }
+
+    // Test/demo flows may set payment as paid while status is still accepted.
+    if (gig.status === "accepted" && gig.paymentStatus === "paid") {
+      gig.status = "in-progress";
+    }
+
     if (gig.status !== "in-progress") {
       return res.status(400).json({ message: "Job must be in progress before stopping work" });
     }
 
     if (!gig.workStartedAt) {
-      return res.status(400).json({ message: "Work start time is missing. Start work first." });
+      // Graceful fallback for jobs moved to in-progress by payment flow.
+      gig.workStartedAt = new Date();
     }
 
     gig.workEndedAt = new Date();

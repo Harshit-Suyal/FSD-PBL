@@ -1,10 +1,13 @@
 import React from 'react';
 import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useSocket } from '../context/SocketContext';
 
 const Navbar = () => {
     const { user, logout, isAuthenticated } = useAuth();
+    const { notifications } = useSocket();
     const navigate = useNavigate();
+    const unreadCount = notifications.filter((notification) => !notification.isRead).length;
 
     const handleLogout = () => {
         logout();
@@ -41,6 +44,9 @@ const Navbar = () => {
                 <div className="nav-actions">
                     {isAuthenticated ? (
                         <>
+                            <button className="btn btn-ghost btn-sm" onClick={() => navigate('/dashboard', { state: { tab: 'notifications' } })}>
+                                🔔 Notifications {unreadCount > 0 ? `(${unreadCount})` : ''}
+                            </button>
                             <div className="nav-user-chip" onClick={() => navigate('/profile')}>
                                 <div className="nav-avatar">{getInitials(user?.name)}</div>
                                 <span>{user?.name?.split(' ')[0]}</span>

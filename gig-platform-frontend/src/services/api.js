@@ -74,7 +74,11 @@ export const createGig = (data) => api.post('/gigs', data);
 export const updateGig = (id, data) => api.put(`/gigs/${id}`, data);
 export const deleteGig = (id) => api.delete(`/gigs/${id}`);
 export const getMyGigs = () => api.get('/gigs/user/my-gigs');
-export const markGigPaymentDone = (id) => api.put(`/gigs/${id}/payment`);
+export const createPaymentOrder = (gigId, data = {}) => api.post('/payments/create-order', { gigId, ...data });
+export const verifyRazorpayPayment = (data) => api.post('/payments/verify', data);
+export const markTestPaymentPaid = (gigId, data = {}) => api.post('/payments/test-mark-paid', { gigId, ...data });
+export const getMyPayments = () => api.get('/payments/me');
+export const markGigPaymentDone = (id, data = {}) => createPaymentOrder(id, data);//legacy alias for payment order creation
 export const completeGig = (id) => api.put(`/gigs/${id}/complete`);
 export const startGigWork = (id) => api.put(`/gigs/${id}/start`);
 export const stopGigWork = (id) => api.put(`/gigs/${id}/stop`);
@@ -104,6 +108,11 @@ export const adminDeleteReview = (id) => api.delete(`/admin/reviews/${id}`);
 export const getAdminReports = () => api.get('/admin/reports');
 export const resolveAdminReport = (id, payload) => api.put(`/admin/reports/${id}/resolve`, payload);
 export const getAdminPayments = () => api.get('/admin/payments');
+
+// ── Notifications ──
+export const getNotifications = () => api.get('/notifications');
+export const markNotificationAsRead = (id) => api.put(`/notifications/${id}/read`);
+export const markAllNotificationsAsRead = () => api.put('/notifications/read-all');
 
 // ── Chat ──
 export const getGigMessages = (gigId) => api.get(`/chat/${gigId}`);

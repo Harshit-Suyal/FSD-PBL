@@ -4,6 +4,7 @@ import Application from "../models/Application.js";
 import Review from "../models/Review.js";
 import Payment from "../models/Payment.js";
 import Message from "../models/Message.js";
+import Notification from "../models/Notification.js";
 import Report from "../models/Report.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
@@ -267,6 +268,7 @@ export const deleteUser = async (req, res) => {
         Review.deleteMany({ gig: { $in: gigIds } }),
         Payment.deleteMany({ gig: { $in: gigIds } }),
         Message.deleteMany({ gig: { $in: gigIds } }),
+        Notification.deleteMany({ relatedGig: { $in: gigIds } }),
         Report.deleteMany({ targetGig: { $in: gigIds } }),
         Gig.deleteMany({ _id: { $in: gigIds } }),
       ]);
@@ -277,6 +279,7 @@ export const deleteUser = async (req, res) => {
       Review.deleteMany({ $or: [{ reviewer: id }, { reviewee: id }] }),
       Payment.deleteMany({ $or: [{ client: id }, { worker: id }] }),
       Message.deleteMany({ $or: [{ sender: id }, { receiver: id }] }),
+      Notification.deleteMany({ $or: [{ recipient: id }, { sender: id }] }),
       Report.deleteMany({
         $or: [{ reporter: id }, { targetUser: id }, { resolvedBy: id }],
       }),

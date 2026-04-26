@@ -100,15 +100,15 @@ FSD-PBL/
 
 ##  Environment Setup
 
-- **Node.js >= v14**
-- **npm >= v6**
-- (Optional: MongoDB/MySQL running locally or via cloud)
 
 Create `.env` in `gig-platform-backend/` with:
 ```
 PORT=5000
 DB_CONNECTION=your_db_link
 JWT_SECRET=your_secret_key
+RAZORPAY_KEY_ID=your_razorpay_key_id
+RAZORPAY_KEY_SECRET=your_razorpay_key_secret
+CLIENT_URL=http://localhost:5173
 ```
 
 Frontend config:  
@@ -224,8 +224,8 @@ Then they use Mongoose models to interact with MongoDB and return response JSON 
 
 ## Chat (Current Implementation)
 
-###  Current chat is REST-based (HTTP) + MongoDB storage
-Chat is implemented using normal API endpoints:
+###  Current chat is REST-based + Socket.IO enabled
+Chat still has normal API endpoints, but the backend now also emits live Socket.IO updates:
 
 - `GET /api/chat/:gigId` → fetch chat messages for a gig
 - `POST /api/chat/:gigId` → send a message (stored in DB)
@@ -236,39 +236,29 @@ Backend files:
 - `gig-platform-backend/models/Message.js`
 
 ### Not real-time yet (no Socket.IO wiring)
-Even though `socket.io` exists in backend dependencies, the backend currently does **not** initialize Socket.IO server (no `io.on("connection")` setup).
-So chat works like a normal messaging system using API calls (often refreshed in UI via repeated fetches / polling).
+REST remains available as a fallback, but live messaging and notification events are now pushed through Socket.IO.
 
 ---
 
 ##  Payments (Current Implementation)
 
-### Payment is currently mocked/manual (NO payment gateway)
-There is **no Stripe / Razorpay / PayPal / webhook verification** implemented.
+### Payment now uses Razorpay order creation and backend verification
+Razorpay is integrated for order creation and signature verification.
 
 What exists right now:
 - Payment data is stored in MongoDB using:
   - `gig-platform-backend/models/Payment.js`
 
 How payment happens in the UI:
-- Client can press a button like **“Mark Payment Done”**
-- Frontend calls:
-  - `PUT /api/gigs/:id/payment`
-- Backend creates a `Payment` record and sets:
-  - `gig.paymentStatus = "paid"`
+- Client clicks **“Pay with Razorpay”** from the gig page
+- Frontend creates an order, opens Razorpay Checkout, then verifies the payment signature
+- Backend stores the payment record and updates the gig/payment status after verification
 
-So this is a **manual “mark as paid”** flow for now (useful for academic/demo purposes).
+So this is now a **verified payment flow** instead of a manual toggle.
 
 ---
 
 ##  Summary
-- Data travels via **Axios → Express Routes → Controllers → MongoDB (Mongoose)**
-- Auth is via **JWT in Authorization header**
-- Chat is **REST + MongoDB** (not real-time sockets yet)
-- Payments are **mocked/manual** (no gateway integration yet)
-
-## Edge Cases Handled (Phase 2)
-
 - **Unique Account Enforcement:** Duplicate registrations by email blocked.
 - **Data Validation:** Forms validate required fields and basic input types.
 - **API Error Guarding:** Graceful messages for failed API calls (e.g., offline DB).
@@ -279,10 +269,8 @@ So this is a **manual “mark as paid”** flow for now (useful for academic/dem
 
 ## Known Limitations / Next Challenges
 
-- **No integrated payments yet:** All transaction logic is mocked, not real.
-- **No real-time communication:** Chat & notifications coming in next phase.
-- **Basic admin/moderation:** User/content reporting pending.
-- **Edge case expansion:** Handling disputes and timeouts will be added soon.
+- **Real payments added:** Razorpay handles order creation and verification.
+- **Real-time communication added:** chat and notifications now use Socket.IO.
 
 ---
 

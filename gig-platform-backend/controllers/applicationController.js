@@ -1,5 +1,8 @@
 import Application from "../models/Application.js";
 import Gig from "../models/Gig.js";
+import Message from "../models/Message.js";
+import { createNotification } from "../services/notificationService.js";
+import { emitToGig, emitToUser } from "../utils/socket.js";
 
 const buildWorkerProfileState = (worker) => {
     const requiredFields = ["name", "email", "phone", "location", "bio", "workType"];
@@ -190,12 +193,76 @@ export const updateApplicationStatus = async (req, res) => {
             gig.requiredWorkers = 1;
             gig.budget = negotiatedAmount;
             gig.status = "accepted";
+            gig.paymentStatus = gig.paymentStatus === "paid" ? "paid" : "unpaid";
             await gig.save();
 
+            const otherApplications = await Application.find({
+                gig: application.gig,
+                _id: { $ne: application._id },
+            }).populate("worker", "name email role");
+
             await Application.updateMany(
-                { gig: application.gig, _id: { $ne: application._id }, status: "pending" },
+                { gig: application.gig, _id: { $ne: application._id } },
                 { status: "rejected" }
             );
+
+            const compactDescription = String(gig.description || "")
+                .replace(/\s+/g, " ")
+                .trim();
+
+            const selectionDetails = [
+                "Congratulations! You have been selected for this gig.",
+                `Gig title: ${gig.title}`,
+                compactDescription ? `Description: ${compactDescription}` : null,
+                `Budget/payment amount: ₹${Number(negotiatedAmount).toLocaleString("en-IN")}`,
+                `Location: ${gig.location || "Not specified"}`,
+                `Deadline/date: ${gig.deadline ? new Date(gig.deadline).toLocaleString() : "Not specified"}`,
+                `Client name: ${req.user.name || "Client"}`,
+            ].filter(Boolean).join("\n");
+
+            await Message.create({
+                gig: gig._id,
+                sender: req.user._id,
+                receiver: application.worker,
+                message: selectionDetails,
+                messageType: "system",
+            });
+
+            await createNotification({
+                recipientId: application.worker,
+                senderId: req.user._id,
+                type: "selection",
+                title: "You have been selected",
+                message: selectionDetails,
+                relatedGigId: gig._id,
+            });
+
+            await Promise.all(otherApplications.map(async (otherApplication) => {
+                const rejectionMessage = "Thank you for applying for this gig. We appreciate your interest, but another candidate has been selected for this opportunity. We encourage you to apply for future gigs.";
+
+                await Message.create({
+                    gig: gig._id,
+                    sender: req.user._id,
+                    receiver: otherApplication.worker._id,
+                    message: rejectionMessage,
+                    messageType: "system",
+                });
+
+                await createNotification({
+                    recipientId: otherApplication.worker._id,
+                    senderId: req.user._id,
+                    type: "rejection",
+                    title: "Application update",
+                    message: rejectionMessage,
+                    relatedGigId: gig._id,
+                });
+            }));
+
+            emitToGig(gig._id.toString(), "gig:updated", gig);
+            emitToUser(application.worker.toString(), "gig:updated", gig);
+            otherApplications.forEach((otherApplication) => {
+                emitToUser(otherApplication.worker._id.toString(), "gig:updated", gig);
+            });
         }
 
         application.status = status;
@@ -210,6 +277,26 @@ export const updateApplicationStatus = async (req, res) => {
                 gig.status = pendingApplications > 0 ? "pending" : "open";
                 await gig.save();
             }
+
+            const rejectionMessage = "Thank you for applying for this gig. We appreciate your interest, but another candidate has been selected for this opportunity. We encourage you to apply for future gigs.";
+            await Message.create({
+                gig: gig._id,
+                sender: req.user._id,
+                receiver: application.worker,
+                message: rejectionMessage,
+                messageType: "system",
+            });
+
+            await createNotification({
+                recipientId: application.worker,
+                senderId: req.user._id,
+                type: "rejection",
+                title: "Application update",
+                message: rejectionMessage,
+                relatedGigId: gig._id,
+            });
+
+            emitToUser(application.worker.toString(), "gig:updated", gig);
         }
 
         const populated = await Application.findById(application._id)
