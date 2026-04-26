@@ -4,6 +4,8 @@
 **Status:** Phase 3 complete and pushed to GitHub  
 **Team:** Harshit Suyal, Manas Joshi, Aishwary Bisht, Saumya Pratap Singh
 
+**Live Demo:** https://gigconnect-avrh.onrender.com/
+
 ---
 
 ## Overview
@@ -12,7 +14,7 @@ GigConnect is a MERN-based gig marketplace that connects clients, workers, and a
 
 For the full architecture breakdown, database design, payment flow, and diagrams, see [PROJECT_DOCUMENTATION.md](PROJECT_DOCUMENTATION.md). For a shorter reference version, see [README_COMPREHENSIVE.md](README_COMPREHENSIVE.md).
 
-Deployment Link: https://gigconnect-avrh.onrender.com/
+
 
 ---
 
