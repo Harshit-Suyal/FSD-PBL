@@ -7,7 +7,7 @@ import {
     getUserById,
     getAllUsers,
     toggleUserStatus,
-    deleteUser,
+    deleteUser ,
     getWorkerUpdates,
 } from "../controllers/userController.js";
 import { protect, adminOnly } from "../middleware/authMiddleware.js";
